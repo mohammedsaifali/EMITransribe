@@ -1,34 +1,43 @@
 import streamlit as st
-import speech_recognition as sr
-from googletrans import Translator
+from google.cloud import speech
+from google.cloud import translate_v2 as translate
 from pydub import AudioSegment
-import tempfile
+import io
+import os
+
+# Set Google Cloud credentials
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "transcribe-386609-94023ff24190.json"
 
 def transcribe_audio(file, file_format):
-    r = sr.Recognizer()
-    
+    client = speech.SpeechClient()
+
     # convert ogg to wav if necessary
     if file_format == 'ogg':
         audio = AudioSegment.from_ogg(file)
-        file = tempfile.NamedTemporaryFile(delete=False)
-        file_name = file.name+'.wav'
-        audio.export(file_name, format="wav")
-        file = file_name
+        file = io.BytesIO()
+        audio.export(file, format="wav")
+        file.seek(0)
+
+    audio = speech.RecognitionAudio(content=file.read())
+    config = speech.RecognitionConfig(
+        encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+        sample_rate_hertz=16000,
+        language_code="ar",
+    )
+
+    response = client.recognize(config=config, audio=audio)
     
-    with sr.AudioFile(file) as source:
-        audio_data = r.record(source)
-        text_in_arabic = r.recognize_google(audio_data, language='ar')
-    return text_in_arabic
+    for result in response.results:
+        return result.alternatives[0].transcript
 
 def translate_text(text):
-    translator = Translator()
-    translation = translator.translate(text, src='ar', dest='en')
-    return translation.text
+    translate_client = translate.Client()
+    result = translate_client.translate(text, target_language='en')
+    return result['translatedText']
 
-st.title('EMI Arabic Audio to English Text Transcription')
-st.text('Developed by Saif')
+st.title('Arabic Audio to English Text Transcription')
 
-uploaded_file = st.file_uploader("Upload an audio file", type=["wav", "mp3", "ogg"])
+uploaded_file = st.file_uploader("Upload an audio file", type=["wav", "ogg"])
 if uploaded_file is not None:
     try:
         st.write("Transcribing and translating, please wait...")
